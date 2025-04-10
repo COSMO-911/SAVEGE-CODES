@@ -1,0 +1,145 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Set the LCD address to 0x27 for a 16 chars and 2 line display
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+const int jumpButtonPin = 2;
+const int restartButtonPin = 3;
+
+int dinoRow = 1;
+int obstaclePosition = 15;
+int score = 0;
+bool gameOver = false;
+int obstacleDelay = 200;
+bool isCactus = true;
+int birdFrame = 0;
+int jumpState = 0;       // 0: on ground, 1: jumping, 2: falling
+unsigned long jumpStartTime = 0; //millis when jump starts
+const unsigned long jumpDuration = 1200; // 1.2 seconds
+
+// Character definitions
+const char dinoChars[] = ">=";
+const char cactusChars = '#';
+const char birdChars[2][2] = { "v", "^"};
+
+void setup() {
+  pinMode(jumpButtonPin, INPUT_PULLUP);
+  pinMode(restartButtonPin, INPUT_PULLUP);
+
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  randomSeed(analogRead(0));
+
+  startGame();
+}
+
+void loop() {
+  if (gameOver) {
+    if (digitalRead(restartButtonPin) == LOW) {
+      delay(50);
+      while (digitalRead(restartButtonPin) == LOW);
+      startGame();
+    }
+  } else {
+    updateGame();
+    delay(obstacleDelay);
+  }
+}
+
+void startGame() {
+  gameOver = false;
+  score = 0;
+  dinoRow = 1;
+  obstaclePosition = 15;
+  obstacleDelay = 200;
+  isCactus = true;
+  birdFrame = 0;
+  jumpState = 0;
+  lcd.clear();
+  lcd.setCursor(0, 1);
+  lcd.print(dinoChars);
+  lcd.setCursor(obstaclePosition, 1);
+  lcd.print(cactusChars);
+}
+
+void updateGame() {
+  if (digitalRead(jumpButtonPin) == LOW && jumpState == 0) {
+    jumpState = 1;
+    jumpStartTime = millis();
+  }
+
+  // Dino Gravity Logic
+  if (jumpState == 1) { // Jumping
+    if (millis() - jumpStartTime < jumpDuration / 2) {
+      dinoRow = 0; // Stay high for the first half
+    } else {
+      dinoRow = 1; // Start falling on the second half
+      jumpState = 2;
+    }
+  }
+  else if (jumpState == 2){ //falling
+     if (millis() - jumpStartTime >= jumpDuration) {
+      dinoRow = 1;
+      jumpState = 0;
+     }
+     else{
+      dinoRow = 1;
+     }
+  }
+  else{
+    dinoRow = 1;
+  }
+
+  lcd.clear();
+
+  // Draw Dino
+  lcd.setCursor(0, dinoRow);
+  lcd.print(dinoChars);
+
+  // Move obstacle
+  obstaclePosition--;
+  if (obstaclePosition < 0) {
+    obstaclePosition = 15;
+    score++;
+
+    // Randomize obstacle type
+    isCactus = (random(2) == 0);
+
+    // Randomize obstacle speed
+    obstacleDelay = random(150, 250) - (score * 2);
+    if (obstacleDelay < 50) {
+      obstacleDelay = 50;
+    }
+  }
+
+  // Draw obstacle
+  if (isCactus) {
+    lcd.setCursor(obstaclePosition, 1);
+    lcd.print(cactusChars);
+  }
+  else{
+    lcd.setCursor(obstaclePosition, 0);
+    lcd.print(birdChars[birdFrame]);
+    birdFrame = 1- birdFrame;
+  }
+
+  // Check Collision
+  if (obstaclePosition < 2) { // Adjusted for dino width
+    if ((isCactus && dinoRow == 1) || (!isCactus && dinoRow == 0)) {
+      gameOver = true;
+      showGameOver();
+    }
+  }
+}
+
+void showGameOver() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Game Over");
+  lcd.setCursor(0, 1);
+  lcd.print("Score: ");
+  lcd.print(score);
+}
+
